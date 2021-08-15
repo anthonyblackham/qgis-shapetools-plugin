@@ -1,7 +1,7 @@
 import os
 from geographiclib.geodesic import Geodesic
 
-from qgis.core import (QgsPoint, QgsProject, QgsCoordinateTransform)
+from qgis.core import (QgsPoint, QgsField, QgsProject, QgsCoordinateTransform)
 
 from qgis.core import (
     QgsProcessing,
@@ -9,6 +9,7 @@ from qgis.core import (
     QgsProcessingParameterNumber,
     QgsProcessingParameterEnum,
     QgsProcessingParameterFeatureSource,
+    QgsProcessingParameterField,
     QgsProcessingParameterFeatureSink)
 
 from qgis.PyQt.QtGui import QIcon
@@ -24,6 +25,7 @@ class GeodesicTransformationsAlgorithm(QgsProcessingAlgorithm):
 
     PrmInputLayer = 'InputLayer'
     PrmOutputLayer = 'OutputLayer'
+    PrmTransformScaleField = 'TransformScaleField'
     PrmTransformRotation = 'TransformRotation'
     PrmTransformScale = 'TransformScale'
     PrmTransformAzimuth = 'TransformAzimuth'
@@ -36,6 +38,15 @@ class GeodesicTransformationsAlgorithm(QgsProcessingAlgorithm):
                 self.PrmInputLayer,
                 tr('Input vector layer'),
                 [QgsProcessing.TypeVectorAnyGeometry])
+        )
+        self.addParameter(
+            QgsProcessingParameterField(
+                self.PrmTransformScaleField,
+                tr('Transform Scale field'),
+                parentLayerParameterName=self.PrmInputLayer,
+                type=QgsProcessingParameterField.Numeric,
+                optional=True
+            )
         )
         self.addParameter(
             QgsProcessingParameterNumber(
@@ -85,6 +96,7 @@ class GeodesicTransformationsAlgorithm(QgsProcessingAlgorithm):
 
     def processAlgorithm(self, parameters, context, feedback):
         source = self.parameterAsSource(parameters, self.PrmInputLayer, context)
+        scalecol = self.parameterAsString(parameters, self.PrmTransformScaleField, context)
         angle = self.parameterAsDouble(parameters, self.PrmTransformRotation, context)
         scale = self.parameterAsDouble(parameters, self.PrmTransformScale, context)
         azimuth = self.parameterAsDouble(parameters, self.PrmTransformAzimuth, context)
@@ -125,14 +137,19 @@ class GeodesicTransformationsAlgorithm(QgsProcessingAlgorithm):
             ncy = new_centroid.y()
             ncx = new_centroid.x()
 
+            if scalecol:
+                scale2 = float(feature[scalecol])
+            else:
+                scale2 = scale
+
             vertices = geom.vertices()
             for vcnt, vertex in enumerate(vertices):
                 v = geom_to_4326.transform(vertex.x(), vertex.y())
                 gline = geod.Inverse(cy, cx, v.y(), v.x())
                 vdist = gline['s12']
                 vazi = gline['azi1']
-                if scale != 1:
-                    vdist = vdist * scale
+                if scale2 != 1:
+                    vdist = vdist * scale2
                 if angle != 0:
                     vazi += angle
                 g = geod.Direct(ncy, ncx, vazi, vdist, Geodesic.LATITUDE | Geodesic.LONGITUDE)
